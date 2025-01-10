@@ -85,7 +85,7 @@ contract MonadFaucetTest is Test {
         faucet.withdrawFunds(withdrawAmount);
 
         assertEq(address(faucet).balance, 5 ether - withdrawAmount);
-        assertEq(owner.balance, 10 ether + withdrawAmount);
+        assertEq(owner.balance, 5 ether + withdrawAmount);
     }
 
     function test_OnlyOwnerCanWithdrawFunds() public {
