@@ -2,15 +2,16 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+solc_version = "0.8.27"
 
 # Monad Configuration
 # TODO: Add RPC URL and Chain ID
-eth-rpc-url="https://rpc-devnet.monadinfra.com/rpc/3fe540e310bbb6ef0b9f16cd23073b0a"
-chain_id = 20143
+eth-rpc-url="https://testnet-rpc.monad.xyz"
+chain_id = "10143"
 
 
 # TODO: Add Explorer URL and Chain ID
 [etherscan]
-monadDevnet = { key = "Monad", url = "https://explorer.monad-devnet.devnet101.com/", chain = 20143 }
+monadDevnet = { key = "Monad", url = "https://testnet.monadexplorer.com/", chain = 10143 }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

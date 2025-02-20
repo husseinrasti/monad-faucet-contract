@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-contract MonadFaucetV2 {
+contract MonadFaucetTestNet {
     address public owner;
     uint256 public dripAmount;
     uint256 public cooldownTime;
@@ -23,21 +23,20 @@ contract MonadFaucetV2 {
         _;
     }
 
-    // Only the owner can request tokens
-    function requestTokens(address recipient) external onlyOwner {
+    function requestTokens() external {
         require(
             address(this).balance >= dripAmount,
             "Not enough funds in the faucet"
         );
         require(
-            block.timestamp >= lastRequestTime[recipient] + cooldownTime,
+            block.timestamp >= lastRequestTime[msg.sender] + cooldownTime,
             "Cooldown period has not passed"
         );
 
-        lastRequestTime[recipient] = block.timestamp;
-        payable(recipient).transfer(dripAmount);
+        lastRequestTime[msg.sender] = block.timestamp;
+        payable(msg.sender).transfer(dripAmount);
 
-        emit TokensDripped(recipient, dripAmount);
+        emit TokensDripped(msg.sender, dripAmount);
     }
 
     function updateDripAmount(uint256 _dripAmount) external onlyOwner {

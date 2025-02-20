@@ -1,16 +1,8 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {console} from "forge-std/console.sol";
-
-contract MonadFaucetV3Bot {
-    using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
-
+contract MonadFaucetMeta {
     address public owner;
-    address public relayer;
     uint256 public dripAmount;
     uint256 public cooldownTime;
 
@@ -19,7 +11,6 @@ contract MonadFaucetV3Bot {
     event TokensDripped(address indexed recipient, uint256 amount);
     event CooldownTimeUpdated(uint256 newCooldownTime);
     event DripAmountUpdated(uint256 newDripAmount);
-    event RelayerRefunded(address indexed relayer, uint256 gasUsed);
 
     constructor() payable {
         owner = msg.sender;
@@ -47,26 +38,14 @@ contract MonadFaucetV3Bot {
             "Cooldown period has not passed"
         );
 
-        console.log("from signer:");
-        console.logAddress(recipient);
-        console.logUint(nonce);
-        console.logAddress(address(this));
-        // Verify recipient's signature
+        // Verify user's signature
         bytes32 messageHash = keccak256(
             abi.encodePacked(recipient, nonce, address(this))
         );
-
-        address recoveredSigner = messageHash.toEthSignedMessageHash().recover(
-            signature
+        require(
+            recoverSigner(messageHash, signature) == recipient,
+            "Invalid signature"
         );
-        console.log("signature:");
-        console.logBytes32(messageHash);
-        console.logBytes(signature);
-        console.log("requier equals address:");
-        console.logAddress(recoveredSigner);
-        console.logAddress(recipient);
-
-        require(recoveredSigner == recipient, "Invalid signature");
 
         // Update the last request time
         lastRequestTime[recipient] = block.timestamp;
@@ -77,7 +56,7 @@ contract MonadFaucetV3Bot {
         emit TokensDripped(recipient, dripAmount);
     }
 
-    // Helper function to recover signer
+    // Helper function to recover the signer of a message
     function recoverSigner(
         bytes32 messageHash,
         bytes memory signature
@@ -85,24 +64,20 @@ contract MonadFaucetV3Bot {
         bytes32 ethSignedMessageHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
         );
-        console.logBytes32(ethSignedMessageHash);
         (bytes32 r, bytes32 s, uint8 v) = splitSignature(signature);
-        console.logBytes32(r);
-        console.logBytes32(s);
-        console.logUint(v);
         return ecrecover(ethSignedMessageHash, v, r, s);
     }
 
+    // Split a signature into r, s, and v
     function splitSignature(
-        bytes memory signature
+        bytes memory sig
     ) public pure returns (bytes32 r, bytes32 s, uint8 v) {
-        require(signature.length == 65, "Invalid signature length");
-        assembly ("memory-safe") {
-            r := mload(add(signature, 0x20))
-            s := mload(add(signature, 0x40))
-            v := byte(0, mload(add(signature, 0x60)))
+        require(sig.length == 65, "Invalid signature length");
+        assembly {
+            r := mload(add(sig, 32))
+            s := mload(add(sig, 64))
+            v := byte(0, mload(add(sig, 96)))
         }
-        return (r, s, v);
     }
 
     // Owner can update the drip amount

@@ -1,126 +1,145 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Test, console} from "forge-std/Test.sol";
 import {MonadFaucetV2} from "../src/MonadFaucetV2.sol";
 
 contract MonadFaucetV2Test is Test {
-    using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
-
-    MonadFaucetV2 public faucet;
-
-    uint256 internal recipientPrivateKey;
-    uint256 internal ownerPrivateKey;
-
-    address public owner;
-    address public recipient;
-    uint256 public dripAmount;
-    uint256 public cooldownTime;
+    MonadFaucetV2 faucet;
+    address owner = address(0x123);
+    address user1 = address(0x456);
+    address user2 = address(0x789);
 
     function setUp() public {
-        recipientPrivateKey = 0xa11ce;
-        ownerPrivateKey = 0xabc123;
-
-        owner = vm.addr(ownerPrivateKey);
-        recipient = vm.addr(recipientPrivateKey);
-
-        vm.deal(owner, 10 ether);
+        // Deploy the contract with the owner address
         vm.prank(owner);
-        faucet = new MonadFaucetV2{value: 8 ether}();
+        faucet = new MonadFaucetV2();
 
-        dripAmount = 2 ether;
-        cooldownTime = 3 minutes;
+        // Fund the faucet with 10 ETH
+        vm.deal(address(faucet), 10 ether);
     }
 
-    function test_RequestTokens() public {
-        uint256 nonce = 1;
-
-        vm.startPrank(recipient);
-        bytes memory signature = _signMessage(
-            recipient,
-            recipientPrivateKey,
-            nonce
-        ); // note the order here is different from line above.
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + cooldownTime);
-        vm.prank(address(this));
-        faucet.requestTokens(recipient, nonce, signature);
-
-        assertEq(recipient.balance, dripAmount);
-        assertEq(address(faucet).balance, 6 ether);
-    }
-
-    function test_UpdateDripAmount() public {
-        uint256 newDripAmount = 3 ether;
-
+    // Test that only the owner can request tokens
+    function testOnlyOwnerCanRequestTokens() public {
+        // Owner requests tokens for user1
         vm.prank(owner);
-        faucet.updateDripAmount(newDripAmount);
+        faucet.requestTokens(user1);
 
-        assertEq(faucet.dripAmount(), newDripAmount);
+        // Check that user1 received the dripAmount
+        assertEq(user1.balance, 1 ether);
+
+        // Non-owner tries to request tokens
+        vm.expectRevert("Only owner can call this function");
+        vm.prank(user1);
+        faucet.requestTokens(user1);
     }
 
-    function test_UpdateCooldownTime() public {
-        uint256 newCooldownTime = 5 minutes;
+    // Test the initial state of the contract
+    function testInitialState() public {
+        assertEq(faucet.owner(), owner);
+        assertEq(faucet.dripAmount(), 1 ether);
+        assertEq(faucet.cooldownTime(), 1 minutes);
+    }
 
+    // Test cooldown period
+    function testCooldownPeriod() public {
+        // Owner requests tokens for user1
         vm.prank(owner);
-        faucet.updateCooldownTime(newCooldownTime);
+        faucet.requestTokens(user1);
 
-        assertEq(faucet.cooldownTime(), newCooldownTime);
-    }
-
-    function test_WithdrawFunds() public {
-        uint256 withdrawAmount = 3 ether;
-
-        vm.prank(owner);
-        faucet.withdrawFunds(withdrawAmount);
-
-        assertEq(address(faucet).balance, 5 ether);
-        assertEq(owner.balance, 10 ether - 8 ether + withdrawAmount);
-    }
-
-    function test_Fail_RequestTokens_InvalidSignature() public {
-        uint256 nonce = 1;
-
-        bytes memory signature = _signMessage(
-            recipient,
-            ownerPrivateKey,
-            nonce
-        );
-
-        vm.expectRevert("Invalid signature");
-        faucet.requestTokens(recipient, nonce, signature);
-    }
-
-    function test_Fail_RequestTokens_Cooldown() public {
-        uint256 nonce = 1;
-
-        bytes memory signature = _signMessage(
-            recipient,
-            recipientPrivateKey,
-            nonce
-        );
-
-        vm.prank(address(this));
-        faucet.requestTokens(recipient, nonce, signature);
-
+        // Try to request tokens again before the cooldown period
         vm.expectRevert("Cooldown period has not passed");
-        faucet.requestTokens(recipient, nonce + 1, signature);
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Fast-forward time to after the cooldown period
+        vm.warp(block.timestamp + 1 minutes + 1);
+
+        // Owner requests tokens for user1 again
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Check that user1 received another dripAmount
+        assertEq(user1.balance, 2 ether);
     }
 
-    function _signMessage(
-        address receiver,
-        uint256 signer,
-        uint256 nonce
-    ) internal returns (bytes memory) {
-        bytes32 digest = keccak256(
-            abi.encodePacked(receiver, nonce, address(faucet))
-        ).toEthSignedMessageHash();
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signer, digest);
+    // Test updating dripAmount by the owner
+    function testUpdateDripAmount() public {
+        // Owner updates the dripAmount
+        vm.prank(owner);
+        faucet.updateDripAmount(2 ether);
 
-        return abi.encodePacked(r, s, v);
+        // Check that the dripAmount was updated
+        assertEq(faucet.dripAmount(), 2 ether);
+
+        // Owner requests tokens for user1
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Check that user1 received the updated dripAmount
+        assertEq(user1.balance, 2 ether);
+    }
+
+    // Test updating cooldownTime by the owner
+    function testUpdateCooldownTime() public {
+        // Owner updates the cooldownTime
+        vm.prank(owner);
+        faucet.updateCooldownTime(2 minutes);
+
+        // Check that the cooldownTime was updated
+        assertEq(faucet.cooldownTime(), 2 minutes);
+
+        // Owner requests tokens for user1
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Try to request tokens again before the updated cooldown period
+        vm.expectRevert("Cooldown period has not passed");
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Fast-forward time to after the updated cooldown period
+        vm.warp(block.timestamp + 2 minutes + 1);
+
+        // Owner requests tokens for user1 again
+        vm.prank(owner);
+        faucet.requestTokens(user1);
+
+        // Check that user1 received another dripAmount
+        assertEq(user1.balance, 2 ether);
+    }
+
+    // Test withdrawing funds by the owner
+    function testWithdrawFunds() public {
+        // Owner withdraws funds
+        vm.prank(owner);
+        faucet.withdrawFunds(5 ether);
+
+        // Check that the owner received the funds
+        assertEq(owner.balance, 5 ether);
+    }
+
+    // Test that only the owner can update dripAmount
+    function testOnlyOwnerCanUpdateDripAmount() public {
+        // Non-owner tries to update dripAmount
+        vm.expectRevert("Only owner can call this function");
+        vm.prank(user1);
+        faucet.updateDripAmount(2 ether);
+    }
+
+    // Test that only the owner can update cooldownTime
+    function testOnlyOwnerCanUpdateCooldownTime() public {
+        // Non-owner tries to update cooldownTime
+        vm.expectRevert("Only owner can call this function");
+        vm.prank(user1);
+        faucet.updateCooldownTime(2 minutes);
+    }
+
+    // Test that only the owner can withdraw funds
+    function testOnlyOwnerCanWithdrawFunds() public {
+        // Non-owner tries to withdraw funds
+        vm.expectRevert("Only owner can call this function");
+        vm.prank(user1);
+        faucet.withdrawFunds(5 ether);
     }
 }
